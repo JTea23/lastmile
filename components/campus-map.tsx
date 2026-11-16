@@ -7,7 +7,7 @@ import { getMapSymbol, symbolBadgeHtml, type MapLayer, type MapSymbol } from '@/
 
 type MapAction = { type: 'zoom-in' | 'zoom-out' | 'locate'; id: number }
 
-export function CampusMap({ activeLayers, action, onLocationError, route }: { activeLayers: MapLayer[]; action?: MapAction; onLocationError?: (message: string | null) => void; route?: { layers: MapLayer[]; accessibleOnly: boolean } | null }) {
+export function CampusMap({ activeLayers, action, onLocationError, route, destination }: { activeLayers: MapLayer[]; action?: MapAction; onLocationError?: (message: string | null) => void; route?: { layers: MapLayer[]; accessibleOnly: boolean } | null; destination?: { name: string; coordinates: [number, number] } | null }) {
   const mapRef = useRef<HTMLDivElement>(null)
   const leafletRef = useRef<L.Map | null>(null)
   const leafletModuleRef = useRef<typeof import('leaflet') | null>(null)
@@ -81,6 +81,16 @@ export function CampusMap({ activeLayers, action, onLocationError, route }: { ac
       locationMarkerRef.current = null
     }
   }, [])
+
+  useEffect(() => {
+    const map = leafletRef.current
+    const L = leafletModuleRef.current
+    if (!map || !L) return
+    if (destination) {
+      map.flyTo(destination.coordinates, Math.max(map.getZoom(), 17), { duration: 0.8 })
+      L.marker(destination.coordinates).addTo(map).bindTooltip(destination.name, { permanent: true, direction: 'top' }).openTooltip()
+    }
+  }, [destination])
 
   useEffect(() => {
     const map = leafletRef.current
