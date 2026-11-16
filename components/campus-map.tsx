@@ -7,12 +7,13 @@ import 'leaflet/dist/leaflet.css'
 type MapLayer = 'no-go' | 'terrain' | 'parking'
 type MapAction = { type: 'zoom-in' | 'zoom-out' | 'locate'; id: number }
 
-export function CampusMap({ activeLayers, action, onLocationError }: { activeLayers: MapLayer[]; action?: MapAction; onLocationError?: (message: string | null) => void }) {
+export function CampusMap({ activeLayers, action, onLocationError, route }: { activeLayers: MapLayer[]; action?: MapAction; onLocationError?: (message: string | null) => void; route?: { layers: MapLayer[]; accessibleOnly: boolean } | null }) {
   const mapRef = useRef<HTMLDivElement>(null)
   const leafletRef = useRef<L.Map | null>(null)
   const leafletModuleRef = useRef<typeof import('leaflet') | null>(null)
   const overlaysRef = useRef<Record<string, L.LayerGroup>>({})
   const locationMarkerRef = useRef<L.CircleMarker | null>(null)
+  const routeLayerRef = useRef<L.Polyline | null>(null)
   const locationWatchRef = useRef<number | null>(null)
   const onLocationErrorRef = useRef(onLocationError)
   onLocationErrorRef.current = onLocationError
@@ -60,7 +61,16 @@ export function CampusMap({ activeLayers, action, onLocationError }: { activeLay
 
   useEffect(() => {
     const map = leafletRef.current
-    if (!map) return
+    const L = leafletModuleRef.current
+    if (!map || !L) return
+    routeLayerRef.current?.removeFrom(map)
+    routeLayerRef.current = null
+    if (route) {
+      routeLayerRef.current = L.polyline(
+        [[47.6576, -122.3072], [47.6567, -122.3055], [47.6556, -122.3042], [47.6547, -122.3028], [47.6536, -122.3017]],
+        { color: route.accessibleOnly ? '#1178b5' : '#315f8a', weight: 6, opacity: 0.95, dashArray: route.layers.includes('terrain') ? '9 7' : undefined },
+      ).bindTooltip(route.accessibleOnly ? 'Accessible campus route' : 'Campus route', { sticky: true }).addTo(map)
+    }
     map.setView([47.6553, -122.3035], map.getZoom())
     const overlays = overlaysRef.current
     Object.entries(overlays).forEach(([key, layer]) => {
