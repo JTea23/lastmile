@@ -19,10 +19,12 @@ export function CampusMap({ activeLayers, action, onLocationError }: { activeLay
 
   useEffect(() => {
     if (!mapRef.current || leafletRef.current) return
-    let map: L.Map
+    let map: L.Map | null = null
+    let cancelled = false
     const initialize = async () => {
     const L = (await import('leaflet')).default
-    map = L.map(mapRef.current!, { zoomControl: false, attributionControl: true }).setView([47.6553, -122.3035], 16)
+    if (cancelled || !mapRef.current) return
+    map = L.map(mapRef.current, { zoomControl: false, attributionControl: true }).setView([47.6553, -122.3035], 16)
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(map)
     L.control.zoom({ position: 'bottomright' }).addTo(map)
 
@@ -46,9 +48,10 @@ export function CampusMap({ activeLayers, action, onLocationError }: { activeLay
     }
     initialize()
     return () => {
+      cancelled = true
       if (locationWatchRef.current !== null) navigator.geolocation.clearWatch(locationWatchRef.current)
       locationWatchRef.current = null
-      if (map) map.remove()
+      map?.remove()
       leafletRef.current = null
       leafletModuleRef.current = null
       locationMarkerRef.current = null
