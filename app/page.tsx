@@ -1,14 +1,27 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Accessibility, ChevronDown, Crosshair, Filter, Heart, Menu, Navigation, Search, UserRound, Map as MapIcon, Home as HomeIcon, X } from 'lucide-react'
+import { Accessibility, Crosshair, Filter, Heart, Menu, Navigation, Search, Map as MapIcon, Home as HomeIcon, X } from 'lucide-react'
 import { CampusMap } from '@/components/campus-map'
 import { MapLegend } from '@/components/map-legend'
 
 type Layer = 'no-go' | 'lime-parking' | 'terrain' | 'parking'
 type MapAction = { type: 'zoom-in' | 'zoom-out' | 'locate'; id: number }
-type Route = { id: string; name: string; layers: Layer[]; accessibleOnly: boolean; saved: boolean; openedAt: number }
+type Building = { name: string; coordinates: [number, number] }
+type Route = { id: string; name: string; layers: Layer[]; accessibleOnly: boolean; saved: boolean; openedAt: number; start?: Building; destination?: Building }
 const ROUTES_STORAGE_KEY = 'lastmile-routes-v1'
+
+const buildings: Building[] = [
+  { name: 'Suzzallo Library', coordinates: [47.6553, -122.308] },
+  { name: 'Husky Union Building (HUB)', coordinates: [47.6557, -122.305] },
+  { name: 'Mary Gates Hall', coordinates: [47.6566, -122.3087] },
+  { name: 'Kane Hall', coordinates: [47.6562, -122.307] },
+  { name: 'Odegaard Undergraduate Library', coordinates: [47.6557, -122.3095] },
+  { name: 'Paul G. Allen Center', coordinates: [47.6536, -122.305] },
+  { name: 'The Quad', coordinates: [47.6566, -122.31] },
+  { name: 'IMA', coordinates: [47.653, -122.301] },
+  { name: 'Red Square', coordinates: [47.6558, -122.307] },
+]
 
 const filters: { id: Layer; label: string; description: string; tone: string }[] = [
   { id: 'no-go', label: 'Lime no-go zones', description: "Show zones where Lime bikes and scooters won't work and cannot be parked in", tone: 'coral' },
@@ -34,19 +47,10 @@ export default function Page() {
   const [routesLoaded, setRoutesLoaded] = useState(false)
   const [activeRoute, setActiveRoute] = useState<Route | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedBuilding, setSelectedBuilding] = useState<{ name: string; coordinates: [number, number] } | null>(null)
-
-  const buildings = [
-    { name: 'Suzzallo Library', coordinates: [47.6553, -122.308] as [number, number] },
-    { name: 'Husky Union Building (HUB)', coordinates: [47.6557, -122.305] as [number, number] },
-    { name: 'Mary Gates Hall', coordinates: [47.6566, -122.3087] as [number, number] },
-    { name: 'Kane Hall', coordinates: [47.6562, -122.307] as [number, number] },
-    { name: 'Odegaard Undergraduate Library', coordinates: [47.6557, -122.3095] as [number, number] },
-    { name: 'Paul G. Allen Center', coordinates: [47.6536, -122.305] as [number, number] },
-    { name: 'The Quad', coordinates: [47.6566, -122.31] as [number, number] },
-    { name: 'IMA', coordinates: [47.653, -122.301] as [number, number] },
-    { name: 'Red Square', coordinates: [47.6558, -122.307] as [number, number] },
-  ]
+  const [selectedBuilding, setSelectedBuilding] = useState<Building | null>(null)
+  const [routeStart, setRouteStart] = useState('')
+  const [routeDestination, setRouteDestination] = useState('')
+  const [routeError, setRouteError] = useState('')
   const suggestions = searchQuery.trim()
     ? buildings.filter((building) => building.name.toLowerCase().includes(searchQuery.trim().toLowerCase())).slice(0, 5)
     : []
@@ -70,8 +74,24 @@ export default function Page() {
   const toggleLayer = (layer: Layer) => setActiveLayers((current) => current.includes(layer) ? current.filter((item) => item !== layer) : [...current, layer])
   const addRecent = (route: Route) => setRoutes((current) => [route, ...current.filter((item) => item.id !== route.id)].slice(0, 20))
   const saveCurrentRoute = () => {
-    const route: Route = { id: crypto.randomUUID(), name: routeName(activeLayers, accessibleOnly), layers: [...activeLayers], accessibleOnly, saved: true, openedAt: Date.now() }
+    const route: Route = { id: crypto.randomUUID(), name: activeRoute?.name ?? routeName(activeLayers, accessibleOnly), layers: [...activeLayers], accessibleOnly, saved: true, openedAt: Date.now(), start: activeRoute?.start, destination: activeRoute?.destination }
     setRoutes((current) => [route, ...current])
+    setActiveRoute(route)
+  }
+  const generateRoute = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const start = buildings.find((building) => building.name.toLowerCase() === routeStart.trim().toLowerCase())
+    const destination = buildings.find((building) => building.name.toLowerCase() === routeDestination.trim().toLowerCase())
+    if (!start || !destination) {
+      setRouteError('Choose a starting point and destination from the UW building suggestions.')
+      return
+    }
+    if (start.name === destination.name) {
+      setRouteError('Choose two different locations to create a route.')
+      return
+    }
+    const route: Route = { id: crypto.randomUUID(), name: `${start.name} to ${destination.name}`, layers: [...activeLayers], accessibleOnly, saved: false, openedAt: Date.now(), start, destination }
+    setRouteError('')
     setActiveRoute(route)
   }
   const openRoute = (route: Route) => {
@@ -94,7 +114,6 @@ export default function Page() {
           {[
             { label: 'Home', icon: HomeIcon },
             { label: 'Routes', icon: MapIcon },
-            { label: 'Profile', icon: UserRound },
           ].map(({ label, icon: Icon }) => (
             <button key={label} className={activeTab === label ? 'nav-pill active' : 'nav-pill'} onClick={() => setActiveTab(label)} aria-current={activeTab === label ? 'page' : undefined}>
               <Icon aria-hidden="true" /> {label}
@@ -143,7 +162,21 @@ export default function Page() {
             )}
           </div>
           {activeTab !== 'Routes' && (
-            <button className="route-preview" onClick={saveCurrentRoute}><span className="route-icon"><Navigation /></span><span><strong>{activeRoute ? 'Save another route' : 'Save current route'}</strong><small>{activeRoute ? `${activeRoute.name} · ` : ''}{activeLayers.length + (accessibleOnly ? 1 : 0)} route filters · saved on this device</small></span><Heart aria-hidden="true" /></button>
+            <>
+              <form className="create-route-form" onSubmit={generateRoute} aria-label="Create a campus route">
+                <h2>Create route</h2>
+                <label htmlFor="route-start">Starting location</label>
+                <input id="route-start" name="start" list="uw-building-options" autoComplete="off" value={routeStart} onChange={(event) => setRouteStart(event.target.value)} placeholder="Choose a UW building" required />
+                <label htmlFor="route-destination">Destination</label>
+                <input id="route-destination" name="destination" list="uw-building-options" autoComplete="off" value={routeDestination} onChange={(event) => setRouteDestination(event.target.value)} placeholder="Choose a UW building" required />
+                <datalist id="uw-building-options">
+                  {buildings.map((building) => <option key={building.name} value={building.name} />)}
+                </datalist>
+                {routeError && <p className="route-form-error" role="alert">{routeError}</p>}
+                <button type="submit" className="create-route-submit">Generate route</button>
+              </form>
+              <button className="route-preview" onClick={saveCurrentRoute}><span className="route-icon"><Navigation /></span><span><strong>{activeRoute?.start ? 'Save this route' : activeRoute ? 'Save another route' : 'Save current route'}</strong><small>{activeRoute ? `${activeRoute.name} · ` : ''}{activeLayers.length + (accessibleOnly ? 1 : 0)} route filters · saved on this device</small></span><Heart aria-hidden="true" /></button>
+            </>
           )}
         </section>
         {activeTab === 'Routes' && (

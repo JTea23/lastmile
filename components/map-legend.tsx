@@ -26,10 +26,16 @@ export function MapLegend({ activeLayers, route }: { activeLayers: MapLayer[]; r
             </li>
           ))}
           {route && (
-            <li className="map-legend-item">
-              <span className="legend-sample route" style={{ '--symbol-color': route.accessibleOnly ? '#1178b5' : '#315f8a' } as React.CSSProperties} aria-hidden="true" />
-              <span className="legend-copy"><strong>{route.accessibleOnly ? 'Accessible route' : 'Your route'}</strong><small>Selected campus route</small></span>
-            </li>
+            <>
+              <li className="map-legend-item">
+                <span className="legend-sample lime-route" aria-hidden="true" />
+                <span className="legend-copy"><strong>Lime navigation</strong><small>Solid line</small></span>
+              </li>
+              <li className="map-legend-item">
+                <span className="legend-sample walking-route" aria-hidden="true" />
+                <span className="legend-copy"><strong>Walking</strong><small>Dashed line</small></span>
+              </li>
+            </>
           )}
         </ul>
       )}
