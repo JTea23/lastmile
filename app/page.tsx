@@ -33,6 +33,23 @@ export default function Page() {
   const [routes, setRoutes] = useState<Route[]>([])
   const [routesLoaded, setRoutesLoaded] = useState(false)
   const [activeRoute, setActiveRoute] = useState<Route | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedBuilding, setSelectedBuilding] = useState<{ name: string; coordinates: [number, number] } | null>(null)
+
+  const buildings = [
+    { name: 'Suzzallo Library', coordinates: [47.6553, -122.308] as [number, number] },
+    { name: 'Husky Union Building (HUB)', coordinates: [47.6557, -122.305] as [number, number] },
+    { name: 'Mary Gates Hall', coordinates: [47.6566, -122.3087] as [number, number] },
+    { name: 'Kane Hall', coordinates: [47.6562, -122.307] as [number, number] },
+    { name: 'Odegaard Undergraduate Library', coordinates: [47.6557, -122.3095] as [number, number] },
+    { name: 'Paul G. Allen Center', coordinates: [47.6536, -122.305] as [number, number] },
+    { name: 'The Quad', coordinates: [47.6566, -122.31] as [number, number] },
+    { name: 'IMA', coordinates: [47.653, -122.301] as [number, number] },
+    { name: 'Red Square', coordinates: [47.6558, -122.307] as [number, number] },
+  ]
+  const suggestions = searchQuery.trim()
+    ? buildings.filter((building) => building.name.toLowerCase().includes(searchQuery.trim().toLowerCase())).slice(0, 5)
+    : []
 
   useEffect(() => {
     try {
@@ -91,12 +108,40 @@ export default function Page() {
         <section className="prototype-intro">
           <h1>Last Mile Navigator</h1>
           <p>{activeTab === 'Routes' ? 'Your saved and recent campus routes' : 'Find the best accessible routes across campus'}</p>
-          <label className="prototype-search">
-            <Menu aria-hidden="true" />
-            <span className="sr-only">Search last mile navigator</span>
-            <input placeholder="Search Last Mile Navigator" aria-label="Search Last Mile Navigator" />
-            <Search aria-hidden="true" />
-          </label>
+          <div className="search-area">
+            <label className="prototype-search">
+              <Menu aria-hidden="true" />
+              <span className="sr-only">Search UW Seattle buildings</span>
+              <input
+                placeholder="Search UW buildings"
+                aria-label="Search UW Seattle buildings"
+                role="combobox"
+                aria-autocomplete="list"
+                aria-expanded={suggestions.length > 0}
+                aria-controls="building-suggestions"
+                value={searchQuery}
+                onChange={(event) => { setSearchQuery(event.target.value); setSelectedBuilding(null) }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') setSearchQuery('')
+                  if (event.key === 'Enter' && suggestions[0]) {
+                    event.preventDefault()
+                    setSelectedBuilding(suggestions[0])
+                    setSearchQuery(suggestions[0].name)
+                  }
+                }}
+              />
+              <Search aria-hidden="true" />
+            </label>
+            {suggestions.length > 0 && (
+              <ul id="building-suggestions" className="building-suggestions" role="listbox" aria-label="UW building suggestions">
+                {suggestions.map((building) => (
+                  <li key={building.name} role="option" aria-selected={selectedBuilding?.name === building.name}>
+                    <button type="button" onClick={() => { setSelectedBuilding(building); setSearchQuery(building.name) }}>{building.name}</button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
           {activeTab !== 'Routes' && (
             <button className="route-preview" onClick={saveCurrentRoute}><span className="route-icon"><Navigation /></span><span><strong>{activeRoute ? 'Save another route' : 'Save current route'}</strong><small>{activeRoute ? `${activeRoute.name} · ` : ''}{activeLayers.length + (accessibleOnly ? 1 : 0)} route filters · saved on this device</small></span><Heart aria-hidden="true" /></button>
           )}
@@ -116,7 +161,7 @@ export default function Page() {
       </aside>
 
       <section className="prototype-map-section" aria-label="UW Seattle campus map">
-        <CampusMap activeLayers={activeLayers} action={mapAction} onLocationError={setLocationError} route={activeRoute} />
+        <CampusMap activeLayers={activeLayers} action={mapAction} onLocationError={setLocationError} route={activeRoute} destination={selectedBuilding} />
         <div className="map-bottom-stack">
           <MapLegend activeLayers={activeLayers} route={activeRoute} />
           {locationError && <p className="location-status" role="status">{locationError}</p>}
