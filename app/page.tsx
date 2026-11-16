@@ -3,16 +3,18 @@
 import { useEffect, useState } from 'react'
 import { Accessibility, ChevronDown, Crosshair, Filter, Heart, Menu, Navigation, Search, UserRound, Map as MapIcon, Home as HomeIcon, X } from 'lucide-react'
 import { CampusMap } from '@/components/campus-map'
+import { MapLegend } from '@/components/map-legend'
 
-type Layer = 'no-go' | 'terrain' | 'parking'
+type Layer = 'no-go' | 'lime-parking' | 'terrain' | 'parking'
 type MapAction = { type: 'zoom-in' | 'zoom-out' | 'locate'; id: number }
 type Route = { id: string; name: string; layers: Layer[]; accessibleOnly: boolean; saved: boolean; openedAt: number }
 const ROUTES_STORAGE_KEY = 'lastmile-routes-v1'
 
-const filters: { id: Layer; label: string; tone: string }[] = [
-  { id: 'no-go', label: 'Lime no-go zones', tone: 'coral' },
-  { id: 'terrain', label: 'Stairs & slopes', tone: 'amber' },
-  { id: 'parking', label: 'Parking areas', tone: 'blue' },
+const filters: { id: Layer; label: string; description: string; tone: string }[] = [
+  { id: 'no-go', label: 'Lime no-go zones', description: "Show zones where Lime bikes and scooters won't work and cannot be parked in", tone: 'coral' },
+  { id: 'lime-parking', label: 'Lime parking areas', description: 'Show zones where Lime bikes and scooters can be parked', tone: 'green' },
+  { id: 'terrain', label: 'Stairs & slopes', description: 'Show stairs and slopes', tone: 'amber' },
+  { id: 'parking', label: 'Parking areas', description: 'Show car parking areas', tone: 'blue' },
 ]
 
 function routeName(layers: Layer[], accessibleOnly: boolean) {
@@ -95,8 +97,11 @@ export default function Page() {
             <input placeholder="Search Last Mile Navigator" aria-label="Search Last Mile Navigator" />
             <Search aria-hidden="true" />
           </label>
+          {activeTab !== 'Routes' && (
+            <button className="route-preview" onClick={saveCurrentRoute}><span className="route-icon"><Navigation /></span><span><strong>{activeRoute ? 'Save another route' : 'Save current route'}</strong><small>{activeRoute ? `${activeRoute.name} · ` : ''}{activeLayers.length + (accessibleOnly ? 1 : 0)} route filters · saved on this device</small></span><Heart aria-hidden="true" /></button>
+          )}
         </section>
-        {activeTab === 'Routes' ? (
+        {activeTab === 'Routes' && (
           <section className="prototype-bottom-sheet routes-sheet" aria-label="Saved and recent routes">
             <div className="sheet-handle" aria-hidden="true" />
             <div className="sheet-heading"><div><p className="section-label">ROUTE LIBRARY</p><h2>Your routes</h2></div></div>
@@ -107,18 +112,15 @@ export default function Page() {
               {recentRoutes.length ? recentRoutes.map((route) => <RouteCard key={`recent-${route.id}`} route={route} onOpen={openRoute} onToggleSaved={toggleSaved} />) : <p className="route-empty">Routes you open will appear here.</p>}
             </div>
           </section>
-        ) : (
-          <section className="prototype-bottom-sheet" aria-label="Navigation summary">
-            <div className="sheet-handle" aria-hidden="true" />
-            <div className="sheet-heading"><div><p className="section-label">NEAR YOU</p><h2>{activeRoute ? activeRoute.name : 'Explore UW Seattle'}</h2></div><button className="locate-button" onClick={() => triggerMap('locate')} aria-label="Locate me"><Crosshair /></button></div>
-            <button className="route-preview" onClick={saveCurrentRoute}><span className="route-icon"><Navigation /></span><span><strong>{activeRoute ? 'Save another route' : 'Save current route'}</strong><small>{activeLayers.length + (accessibleOnly ? 1 : 0)} route filters · saved on this device</small></span><Heart aria-hidden="true" /></button>
-          </section>
         )}
       </aside>
 
       <section className="prototype-map-section" aria-label="UW Seattle campus map">
         <CampusMap activeLayers={activeLayers} action={mapAction} onLocationError={setLocationError} route={activeRoute} />
-        {locationError && <p className="location-status" role="status">{locationError}</p>}
+        <div className="map-bottom-stack">
+          <MapLegend activeLayers={activeLayers} route={activeRoute} />
+          {locationError && <p className="location-status" role="status">{locationError}</p>}
+        </div>
         <div className="prototype-map-controls">
           <button className="filter-pill" onClick={() => setShowFilters((current) => !current)} aria-expanded={showFilters}><Filter aria-hidden="true" /> Filter{activeLayers.length > 0 ? ` · ${activeLayers.length}` : ''}</button>
           <button className={accessibleOnly ? 'accessibility-button selected' : 'accessibility-button'} onClick={() => setAccessibleOnly((current) => !current)} aria-pressed={accessibleOnly} aria-label="Toggle accessible routes"><Accessibility aria-hidden="true" /></button>
@@ -129,7 +131,7 @@ export default function Page() {
       {showFilters && <section className="prototype-filter-panel" aria-label="Map filters">
         <div className="filter-panel-heading"><div><p className="section-label">MAP FILTERS</p><h2>Show on map</h2></div><button className="close-filter" onClick={() => setShowFilters(false)} aria-label="Close filters"><X /></button></div>
         <p className="filter-help">Toggle layers to highlight accessibility details on the map.</p>
-        {filters.map((filter) => <button key={filter.id} className={activeLayers.includes(filter.id) ? `filter-option active ${filter.tone}` : `filter-option ${filter.tone}`} onClick={() => toggleLayer(filter.id)} aria-pressed={activeLayers.includes(filter.id)}><span className={`filter-swatch ${filter.tone}`} />{filter.label}<span className={activeLayers.includes(filter.id) ? 'filter-check checked' : 'filter-check'} aria-hidden="true">{activeLayers.includes(filter.id) ? '✓' : ''}</span></button>)}
+        {filters.map((filter) => <button key={filter.id} className={activeLayers.includes(filter.id) ? `filter-option active ${filter.tone}` : `filter-option ${filter.tone}`} onClick={() => toggleLayer(filter.id)} aria-pressed={activeLayers.includes(filter.id)}><span className={`filter-swatch ${filter.tone}`} /><span className="filter-copy"><span className="filter-label">{filter.label}</span><span className="filter-description">{filter.description}</span></span><span className={activeLayers.includes(filter.id) ? 'filter-check checked' : 'filter-check'} aria-hidden="true">{activeLayers.includes(filter.id) ? '✓' : ''}</span></button>)}
       </section>}
     </main>
   )
