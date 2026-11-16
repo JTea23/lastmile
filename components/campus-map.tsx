@@ -3,8 +3,8 @@
 import { useEffect, useRef } from 'react'
 import type L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { getMapSymbol, symbolBadgeHtml, type MapLayer, type MapSymbol } from '@/lib/map-symbols'
 
-type MapLayer = 'no-go' | 'terrain' | 'parking'
 type MapAction = { type: 'zoom-in' | 'zoom-out' | 'locate'; id: number }
 
 export function CampusMap({ activeLayers, action, onLocationError, route }: { activeLayers: MapLayer[]; action?: MapAction; onLocationError?: (message: string | null) => void; route?: { layers: MapLayer[]; accessibleOnly: boolean } | null }) {
@@ -29,21 +29,44 @@ export function CampusMap({ activeLayers, action, onLocationError, route }: { ac
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(map)
     L.control.zoom({ position: 'bottomright' }).addTo(map)
 
+    const noGoSymbol = getMapSymbol('no-go')
+    const limeSymbol = getMapSymbol('lime-parking')
+    const stairsSymbol = getMapSymbol('stairs')
+    const slopeSymbol = getMapSymbol('slope')
+    const parkingSymbol = getMapSymbol('parking')
+    const symbolMarker = (position: L.LatLngExpression, symbol: MapSymbol, tooltip: string) =>
+      L.marker(position, { icon: L.divIcon({ className: 'map-symbol-icon', html: symbolBadgeHtml(symbol), iconSize: [26, 26], iconAnchor: [13, 13] }), keyboard: false, alt: symbol.label }).bindTooltip(tooltip, { sticky: true })
+    const areaStyle = (symbol: MapSymbol, fillOpacity: number) => ({ color: symbol.color, fillColor: symbol.fill, fillOpacity, weight: 2 })
+
+    const noGoPolygon: L.LatLngExpression[] = [[47.6539, -122.3025], [47.6552, -122.3012], [47.6548, -122.2994], [47.6536, -122.3003]]
     const noGo = L.layerGroup([
-      L.circle([47.658, -122.307], { radius: 140, color: '#b42318', fillColor: '#fecdca', fillOpacity: 0.55, weight: 2 }).bindTooltip('Lime no-go zone', { sticky: true }),
-      L.polygon([[47.6539, -122.3025], [47.6552, -122.3012], [47.6548, -122.2994], [47.6536, -122.3003]], { color: '#b42318', fillColor: '#fecdca', fillOpacity: 0.65, weight: 2 }).bindTooltip('Scooters not permitted here', { sticky: true }),
+      L.circle([47.658, -122.307], { radius: 140, ...areaStyle(noGoSymbol, 0.55) }).bindTooltip('Lime no-go zone', { sticky: true }),
+      symbolMarker([47.658, -122.307], noGoSymbol, 'Lime no-go zone'),
+      L.polygon(noGoPolygon, areaStyle(noGoSymbol, 0.65)).bindTooltip('Scooters not permitted here', { sticky: true }),
+      symbolMarker(L.polygon(noGoPolygon).getBounds().getCenter(), noGoSymbol, 'Scooters not permitted here'),
     ])
+    const slopePath: L.LatLngExpression[] = [[47.6575, -122.305], [47.6567, -122.3042], [47.6558, -122.3036], [47.6547, -122.303]]
     const terrain = L.layerGroup([
-      L.polyline([[47.6575, -122.305], [47.6567, -122.3042], [47.6558, -122.3036], [47.6547, -122.303]], { color: '#b54708', weight: 7, opacity: 0.85 }).bindTooltip('Steep slope · 8%', { sticky: true }),
-      L.marker([47.6538, -122.304], { icon: L.divIcon({ className: 'stairs-marker', html: '<span aria-label="Stairs">≋</span>', iconSize: [28, 28], iconAnchor: [14, 14] }) }).bindTooltip('Stairs · 12 steps', { sticky: true }),
-      L.marker([47.6562, -122.3008], { icon: L.divIcon({ className: 'stairs-marker', html: '<span aria-label="Stairs">≋</span>', iconSize: [28, 28], iconAnchor: [14, 14] }) }).bindTooltip('Stairs · alternate route available', { sticky: true }),
+      L.polyline(slopePath, { color: slopeSymbol.color, weight: 7, opacity: 0.85 }).bindTooltip('Steep slope · 8%', { sticky: true }),
+      symbolMarker([47.6562, -122.3039], slopeSymbol, 'Steep slope · 8%'),
+      symbolMarker([47.6538, -122.304], stairsSymbol, 'Stairs · 12 steps'),
+      symbolMarker([47.6562, -122.3008], stairsSymbol, 'Stairs · alternate route available'),
     ])
     const parking = L.layerGroup([
-      L.circleMarker([47.6542, -122.3065], { radius: 10, color: '#075985', fillColor: '#38bdf8', fillOpacity: 0.9, weight: 3 }).bindTooltip('Accessible parking · 4 spaces', { sticky: true }),
-      L.circleMarker([47.6572, -122.3005], { radius: 10, color: '#075985', fillColor: '#38bdf8', fillOpacity: 0.9, weight: 3 }).bindTooltip('Micromobility parking · 8 docks', { sticky: true }),
-      L.circleMarker([47.6526, -122.302], { radius: 10, color: '#075985', fillColor: '#38bdf8', fillOpacity: 0.9, weight: 3 }).bindTooltip('Accessible parking · 2 spaces', { sticky: true }),
+      symbolMarker([47.6542, -122.3065], parkingSymbol, 'Car parking · 4 accessible spaces'),
+      symbolMarker([47.6572, -122.3005], parkingSymbol, 'Car parking · 8 spaces'),
+      symbolMarker([47.6526, -122.302], parkingSymbol, 'Car parking · 2 accessible spaces'),
     ])
-    overlaysRef.current = { 'no-go': noGo, terrain, parking }
+    const limeAreas: L.LatLngBoundsLiteral[] = [
+      [[47.6563, -122.3062], [47.6568, -122.3052]],
+      [[47.6545, -122.3048], [47.6549, -122.304]],
+      [[47.6529, -122.3035], [47.6533, -122.3026]],
+    ]
+    const limeParking = L.layerGroup(limeAreas.flatMap((bounds) => [
+      L.rectangle(bounds, areaStyle(limeSymbol, 0.7)).bindTooltip('Lime parking zone', { sticky: true }),
+      symbolMarker(L.latLngBounds(bounds).getCenter(), limeSymbol, 'Lime parking zone'),
+    ]))
+    overlaysRef.current = { 'no-go': noGo, 'lime-parking': limeParking, terrain, parking }
     leafletModuleRef.current = L
     leafletRef.current = map
     }
