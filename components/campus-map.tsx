@@ -7,13 +7,13 @@ import { getMapSymbol, symbolBadgeHtml, type MapLayer, type MapSymbol } from '@/
 
 type MapAction = { type: 'zoom-in' | 'zoom-out' | 'locate'; id: number }
 
-export function CampusMap({ activeLayers, action, onLocationError, route, destination }: { activeLayers: MapLayer[]; action?: MapAction; onLocationError?: (message: string | null) => void; route?: { layers: MapLayer[]; accessibleOnly: boolean } | null; destination?: { name: string; coordinates: [number, number] } | null }) {
+export function CampusMap({ activeLayers, action, onLocationError, route, destination }: { activeLayers: MapLayer[]; action?: MapAction; onLocationError?: (message: string | null) => void; route?: { layers: MapLayer[]; accessibleOnly: boolean; start?: { name: string; coordinates: [number, number] }; destination?: { name: string; coordinates: [number, number] } } | null; destination?: { name: string; coordinates: [number, number] } | null }) {
   const mapRef = useRef<HTMLDivElement>(null)
   const leafletRef = useRef<L.Map | null>(null)
   const leafletModuleRef = useRef<typeof import('leaflet') | null>(null)
   const overlaysRef = useRef<Record<string, L.LayerGroup>>({})
   const locationMarkerRef = useRef<L.CircleMarker | null>(null)
-  const routeLayerRef = useRef<L.Polyline | null>(null)
+  const routeLayerRef = useRef<L.LayerGroup | null>(null)
   const locationWatchRef = useRef<number | null>(null)
   const onLocationErrorRef = useRef(onLocationError)
   onLocationErrorRef.current = onLocationError
@@ -99,18 +99,23 @@ export function CampusMap({ activeLayers, action, onLocationError, route, destin
     routeLayerRef.current?.removeFrom(map)
     routeLayerRef.current = null
     if (route) {
-      routeLayerRef.current = L.polyline(
-        [[47.6576, -122.3072], [47.6567, -122.3055], [47.6556, -122.3042], [47.6547, -122.3028], [47.6536, -122.3017]],
-        { color: route.accessibleOnly ? '#1178b5' : '#315f8a', weight: 6, opacity: 0.95, dashArray: route.layers.includes('terrain') ? '9 7' : undefined },
-      ).bindTooltip(route.accessibleOnly ? 'Accessible campus route' : 'Campus route', { sticky: true }).addTo(map)
+      const start = route.start?.coordinates ?? [47.6576, -122.3072] as [number, number]
+      const destination = route.destination?.coordinates ?? [47.6536, -122.3017] as [number, number]
+      const midpoint: [number, number] = [(start[0] + destination[0]) / 2, (start[1] + destination[1]) / 2]
+      routeLayerRef.current = L.layerGroup([
+        L.polyline([start, midpoint], { color: '#2e7d43', weight: 6, opacity: 0.95 }).bindTooltip('Lime navigation', { sticky: true }),
+        L.polyline([midpoint, destination], { color: '#315f8a', weight: 6, opacity: 0.95, dashArray: '9 7' }).bindTooltip('Walking route', { sticky: true }),
+        L.circleMarker(start, { radius: 7, color: '#fff', weight: 3, fillColor: '#2e7d43', fillOpacity: 1 }).bindTooltip(`Start: ${route.start?.name ?? 'Campus'}`),
+        L.circleMarker(destination, { radius: 7, color: '#fff', weight: 3, fillColor: '#315f8a', fillOpacity: 1 }).bindTooltip(`Destination: ${route.destination?.name ?? 'Campus'}`),
+      ]).addTo(map)
+      if (route.start && route.destination) map.fitBounds(L.latLngBounds(start, destination).pad(0.22), { maxZoom: 17 })
     }
-    map.setView([47.6553, -122.3035], map.getZoom())
     const overlays = overlaysRef.current
     Object.entries(overlays).forEach(([key, layer]) => {
       if (activeLayers.includes(key as MapLayer)) layer.addTo(map)
       else map.removeLayer(layer)
     })
-  }, [activeLayers])
+  }, [activeLayers, route])
 
   useEffect(() => {
     const map = leafletRef.current
