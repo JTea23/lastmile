@@ -7,22 +7,25 @@ import 'leaflet/dist/leaflet.css'
 type MapLayer = 'no-go' | 'terrain' | 'parking'
 type MapAction = { type: 'zoom-in' | 'zoom-out' | 'locate'; id: number }
 
-export function CampusMap({ activeLayers, action, onLocationError }: { activeLayers: MapLayer[]; action?: MapAction; onLocationError?: (message: string | null) => void }) {
+export function CampusMap({ activeLayers, action, onLocationError, route }: { activeLayers: MapLayer[]; action?: MapAction; onLocationError?: (message: string | null) => void; route?: { layers: MapLayer[]; accessibleOnly: boolean } | null }) {
   const mapRef = useRef<HTMLDivElement>(null)
   const leafletRef = useRef<L.Map | null>(null)
   const leafletModuleRef = useRef<typeof import('leaflet') | null>(null)
   const overlaysRef = useRef<Record<string, L.LayerGroup>>({})
   const locationMarkerRef = useRef<L.CircleMarker | null>(null)
+  const routeLayerRef = useRef<L.Polyline | null>(null)
   const locationWatchRef = useRef<number | null>(null)
   const onLocationErrorRef = useRef(onLocationError)
   onLocationErrorRef.current = onLocationError
 
   useEffect(() => {
     if (!mapRef.current || leafletRef.current) return
-    let map: L.Map
+    let map: L.Map | null = null
+    let cancelled = false
     const initialize = async () => {
     const L = (await import('leaflet')).default
-    map = L.map(mapRef.current!, { zoomControl: false, attributionControl: true }).setView([47.6553, -122.3035], 16)
+    if (cancelled || !mapRef.current) return
+    map = L.map(mapRef.current, { zoomControl: false, attributionControl: true }).setView([47.6553, -122.3035], 16)
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }).addTo(map)
     L.control.zoom({ position: 'bottomright' }).addTo(map)
 
@@ -46,9 +49,10 @@ export function CampusMap({ activeLayers, action, onLocationError }: { activeLay
     }
     initialize()
     return () => {
+      cancelled = true
       if (locationWatchRef.current !== null) navigator.geolocation.clearWatch(locationWatchRef.current)
       locationWatchRef.current = null
-      if (map) map.remove()
+      map?.remove()
       leafletRef.current = null
       leafletModuleRef.current = null
       locationMarkerRef.current = null
@@ -57,7 +61,16 @@ export function CampusMap({ activeLayers, action, onLocationError }: { activeLay
 
   useEffect(() => {
     const map = leafletRef.current
-    if (!map) return
+    const L = leafletModuleRef.current
+    if (!map || !L) return
+    routeLayerRef.current?.removeFrom(map)
+    routeLayerRef.current = null
+    if (route) {
+      routeLayerRef.current = L.polyline(
+        [[47.6576, -122.3072], [47.6567, -122.3055], [47.6556, -122.3042], [47.6547, -122.3028], [47.6536, -122.3017]],
+        { color: route.accessibleOnly ? '#1178b5' : '#315f8a', weight: 6, opacity: 0.95, dashArray: route.layers.includes('terrain') ? '9 7' : undefined },
+      ).bindTooltip(route.accessibleOnly ? 'Accessible campus route' : 'Campus route', { sticky: true }).addTo(map)
+    }
     map.setView([47.6553, -122.3035], map.getZoom())
     const overlays = overlaysRef.current
     Object.entries(overlays).forEach(([key, layer]) => {
