@@ -26,16 +26,10 @@ export function MapLegend({ activeLayers, route }: { activeLayers: MapLayer[]; r
             </li>
           ))}
           {route && (
-            <>
-              <li className="map-legend-item">
-                <span className="legend-sample lime-route" aria-hidden="true" />
-                <span className="legend-copy"><strong>Lime navigation</strong><small>Solid line</small></span>
-              </li>
-              <li className="map-legend-item">
-                <span className="legend-sample walking-route" aria-hidden="true" />
-                <span className="legend-copy"><strong>Walking</strong><small>Dashed line</small></span>
-              </li>
-            </>
+            <li className="map-legend-item">
+              <span className="legend-sample walking-route" aria-hidden="true" />
+              <span className="legend-copy"><strong>Mapped walking route</strong><small>OpenStreetMap pedestrian paths</small></span>
+            </li>
           )}
         </ul>
       )}

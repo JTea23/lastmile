@@ -1,14 +1,15 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Accessibility, Crosshair, Filter, Heart, Menu, Navigation, Search, Map as MapIcon, Home as HomeIcon, X } from 'lucide-react'
+import useSWR from 'swr'
+import { Crosshair, Filter, Heart, Menu, Navigation, Search, Map as MapIcon, Home as HomeIcon, X, Pencil } from 'lucide-react'
 import { CampusMap } from '@/components/campus-map'
 import { MapLegend } from '@/components/map-legend'
 
 type Layer = 'no-go' | 'lime-parking' | 'terrain' | 'parking'
 type MapAction = { type: 'zoom-in' | 'zoom-out' | 'locate'; id: number }
 type Building = { name: string; coordinates: [number, number] }
-type Route = { id: string; name: string; layers: Layer[]; accessibleOnly: boolean; saved: boolean; openedAt: number; start?: Building; destination?: Building }
+type Route = { id: string; name: string; layers: Layer[]; accessibleOnly: boolean; saved: boolean; openedAt: number; start?: Building; destination?: Building; geometry?: [number, number][] }
 const ROUTES_STORAGE_KEY = 'lastmile-routes-v1'
 
 const buildings: Building[] = [
@@ -51,9 +52,27 @@ export default function Page() {
   const [routeStart, setRouteStart] = useState('')
   const [routeDestination, setRouteDestination] = useState('')
   const [routeError, setRouteError] = useState('')
+  const campusBuildingQuery = '[out:json][timeout:20];(way["building"]["name"](47.648, -122.323, 47.662, -122.292);relation["building"]["name"](47.648, -122.323, 47.662, -122.292););out center tags;'
+  const { data: openMapBuildings } = useSWR(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(campusBuildingQuery)}`, async (url: string) => {
+    const response = await fetch(url)
+    if (!response.ok) throw new Error('Building lookup failed')
+    const data = await response.json() as { elements?: { tags?: { name?: string }; lat?: number; lon?: number; center?: { lat: number; lon: number } }[] }
+    return (data.elements ?? []).flatMap((element) => {
+      const name = element.tags?.name
+      const position = element.center ?? (element.lat !== undefined && element.lon !== undefined ? { lat: element.lat, lon: element.lon } : undefined)
+      return name && position ? [{ name, coordinates: [position.lat, position.lon] as [number, number] }] : []
+    })
+  }, { revalidateOnFocus: false })
+  const campusBuildings = [...new Map([...buildings, ...(openMapBuildings ?? [])].map((building) => [building.name.toLowerCase(), building])).values()].sort((a, b) => a.name.localeCompare(b.name))
+  const [startSuggestionsOpen, setStartSuggestionsOpen] = useState(false)
+  const [destinationSuggestionsOpen, setDestinationSuggestionsOpen] = useState(false)
   const suggestions = searchQuery.trim()
-    ? buildings.filter((building) => building.name.toLowerCase().includes(searchQuery.trim().toLowerCase())).slice(0, 5)
+    ? campusBuildings.filter((building) => building.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
     : []
+  const matchingBuildings = (value: string) => value.trim()
+    ? campusBuildings.filter((building) => building.name.toLowerCase().includes(value.trim().toLowerCase()))
+    : []
+
 
   useEffect(() => {
     try {
@@ -73,15 +92,20 @@ export default function Page() {
   const triggerMap = (type: MapAction['type']) => setMapAction({ type, id: Date.now() })
   const toggleLayer = (layer: Layer) => setActiveLayers((current) => current.includes(layer) ? current.filter((item) => item !== layer) : [...current, layer])
   const addRecent = (route: Route) => setRoutes((current) => [route, ...current.filter((item) => item.id !== route.id)].slice(0, 20))
+  const routeKey = (route: Route) => route.start && route.destination
+    ? `${route.start.name.toLowerCase()}|${route.destination.name.toLowerCase()}|${[...route.layers].sort().join(',')}|${route.accessibleOnly}`
+    : `${route.name.toLowerCase()}|${[...route.layers].sort().join(',')}|${route.accessibleOnly}`
+  const isAlreadySaved = Boolean(activeRoute && routes.some((route) => route.saved && routeKey(route) === routeKey(activeRoute)))
   const saveCurrentRoute = () => {
-    const route: Route = { id: crypto.randomUUID(), name: activeRoute?.name ?? routeName(activeLayers, accessibleOnly), layers: [...activeLayers], accessibleOnly, saved: true, openedAt: Date.now(), start: activeRoute?.start, destination: activeRoute?.destination }
+    if (!activeRoute || isAlreadySaved) return
+    const route: Route = { ...activeRoute, id: crypto.randomUUID(), saved: true, openedAt: Date.now() }
     setRoutes((current) => [route, ...current])
     setActiveRoute(route)
   }
-  const generateRoute = (event: React.FormEvent<HTMLFormElement>) => {
+  const generateRoute = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const start = buildings.find((building) => building.name.toLowerCase() === routeStart.trim().toLowerCase())
-    const destination = buildings.find((building) => building.name.toLowerCase() === routeDestination.trim().toLowerCase())
+    const start = campusBuildings.find((building) => building.name.toLowerCase() === routeStart.trim().toLowerCase())
+    const destination = campusBuildings.find((building) => building.name.toLowerCase() === routeDestination.trim().toLowerCase())
     if (!start || !destination) {
       setRouteError('Choose a starting point and destination from the UW building suggestions.')
       return
@@ -90,9 +114,19 @@ export default function Page() {
       setRouteError('Choose two different locations to create a route.')
       return
     }
-    const route: Route = { id: crypto.randomUUID(), name: `${start.name} to ${destination.name}`, layers: [...activeLayers], accessibleOnly, saved: false, openedAt: Date.now(), start, destination }
-    setRouteError('')
-    setActiveRoute(route)
+    setRouteError('Finding a walking route on mapped campus paths…')
+    try {
+      const coordinates = `${start.coordinates[1]},${start.coordinates[0]};${destination.coordinates[1]},${destination.coordinates[0]}`
+      const response = await fetch(`https://routing.openstreetmap.de/routed-foot/route/v1/driving/${coordinates}?overview=full&geometries=geojson&steps=false`)
+      const result = await response.json() as { code?: string; routes?: { geometry?: { coordinates: [number, number][] } }[] }
+      const geometry = result.routes?.[0]?.geometry?.coordinates.map(([longitude, latitude]) => [latitude, longitude] as [number, number])
+      if (!response.ok || result.code !== 'Ok' || !geometry?.length) throw new Error('No mapped pedestrian path was returned.')
+      const route: Route = { id: crypto.randomUUID(), name: `${start.name} to ${destination.name}`, layers: [...activeLayers], accessibleOnly, saved: false, openedAt: Date.now(), start, destination, geometry }
+      setRouteError('')
+      setActiveRoute(route)
+    } catch {
+      setRouteError('Could not find a mapped walking route right now. Please try again later.')
+    }
   }
   const openRoute = (route: Route) => {
     setActiveLayers(route.layers)
@@ -104,6 +138,7 @@ export default function Page() {
     addRecent({ ...route, openedAt: Date.now() })
   }
   const toggleSaved = (route: Route) => setRoutes((current) => current.map((item) => item.id === route.id ? { ...item, saved: !item.saved } : item))
+  const renameRoute = (route: Route, name: string) => setRoutes((current) => current.map((item) => item.id === route.id ? { ...item, name } : item))
   const savedRoutes = routes.filter((route) => route.saved)
   const recentRoutes = [...routes].sort((a, b) => b.openedAt - a.openedAt).slice(0, 8)
 
@@ -166,16 +201,21 @@ export default function Page() {
               <form className="create-route-form" onSubmit={generateRoute} aria-label="Create a campus route">
                 <h2>Create route</h2>
                 <label htmlFor="route-start">Starting location</label>
-                <input id="route-start" name="start" list="uw-building-options" autoComplete="off" value={routeStart} onChange={(event) => setRouteStart(event.target.value)} placeholder="Choose a UW building" required />
+                <div className="route-location-field">
+                  <input id="route-start" name="start" autoComplete="off" role="combobox" aria-autocomplete="list" aria-expanded={startSuggestionsOpen && matchingBuildings(routeStart).length > 0} aria-controls="route-start-options" value={routeStart} onFocus={() => setStartSuggestionsOpen(true)} onChange={(event) => { setRouteStart(event.target.value); setStartSuggestionsOpen(true) }} placeholder="Choose a UW building" required />
+                  {startSuggestionsOpen && matchingBuildings(routeStart).length > 0 && <ul className="route-autocomplete" id="route-start-options" role="listbox">{matchingBuildings(routeStart).map((building) => <li key={building.name}><button type="button" role="option" onClick={() => { setRouteStart(building.name); setStartSuggestionsOpen(false) }}>{building.name}</button></li>)}</ul>}
+                  {startSuggestionsOpen && <button className="autocomplete-dismiss" type="button" onClick={() => setStartSuggestionsOpen(false)}>Use typed location</button>}
+                </div>
                 <label htmlFor="route-destination">Destination</label>
-                <input id="route-destination" name="destination" list="uw-building-options" autoComplete="off" value={routeDestination} onChange={(event) => setRouteDestination(event.target.value)} placeholder="Choose a UW building" required />
-                <datalist id="uw-building-options">
-                  {buildings.map((building) => <option key={building.name} value={building.name} />)}
-                </datalist>
+                <div className="route-location-field">
+                  <input id="route-destination" name="destination" autoComplete="off" role="combobox" aria-autocomplete="list" aria-expanded={destinationSuggestionsOpen && matchingBuildings(routeDestination).length > 0} aria-controls="route-destination-options" value={routeDestination} onFocus={() => setDestinationSuggestionsOpen(true)} onChange={(event) => { setRouteDestination(event.target.value); setDestinationSuggestionsOpen(true) }} placeholder="Choose a UW building" required />
+                  {destinationSuggestionsOpen && matchingBuildings(routeDestination).length > 0 && <ul className="route-autocomplete" id="route-destination-options" role="listbox">{matchingBuildings(routeDestination).map((building) => <li key={building.name}><button type="button" role="option" onClick={() => { setRouteDestination(building.name); setDestinationSuggestionsOpen(false) }}>{building.name}</button></li>)}</ul>}
+                  {destinationSuggestionsOpen && <button className="autocomplete-dismiss" type="button" onClick={() => setDestinationSuggestionsOpen(false)}>Use typed location</button>}
+                </div>
                 {routeError && <p className="route-form-error" role="alert">{routeError}</p>}
                 <button type="submit" className="create-route-submit">Generate route</button>
               </form>
-              <button className="route-preview" onClick={saveCurrentRoute}><span className="route-icon"><Navigation /></span><span><strong>{activeRoute?.start ? 'Save this route' : activeRoute ? 'Save another route' : 'Save current route'}</strong><small>{activeRoute ? `${activeRoute.name} · ` : ''}{activeLayers.length + (accessibleOnly ? 1 : 0)} route filters · saved on this device</small></span><Heart aria-hidden="true" /></button>
+              <button className="route-preview" onClick={saveCurrentRoute} disabled={!activeRoute || isAlreadySaved}><span className="route-icon"><Navigation /></span><span><strong>{isAlreadySaved ? 'Route already saved' : activeRoute ? 'Save this route' : 'Create a route to save'}</strong><small>{activeRoute ? `${activeRoute.name} · ` : ''}{activeLayers.length + (accessibleOnly ? 1 : 0)} route filters · saved on this device</small></span><Heart aria-hidden="true" /></button>
             </>
           )}
         </section>
@@ -185,9 +225,9 @@ export default function Page() {
             <div className="sheet-heading"><div><p className="section-label">ROUTE LIBRARY</p><h2>Your routes</h2></div></div>
             <div className="route-list-scroll">
               <h3 className="route-group-title">Saved <span>{savedRoutes.length}</span></h3>
-              {savedRoutes.length ? savedRoutes.map((route) => <RouteCard key={`saved-${route.id}`} route={route} onOpen={openRoute} onToggleSaved={toggleSaved} />) : <p className="route-empty">Save a route from Home to find it here.</p>}
+              {savedRoutes.length ? savedRoutes.map((route) => <RouteCard key={`saved-${route.id}`} route={route} onOpen={openRoute} onToggleSaved={toggleSaved} onRename={renameRoute} />) : <p className="route-empty">Save a route from Home to find it here.</p>}
               <h3 className="route-group-title recent-title">Recent <span>{recentRoutes.length}</span></h3>
-              {recentRoutes.length ? recentRoutes.map((route) => <RouteCard key={`recent-${route.id}`} route={route} onOpen={openRoute} onToggleSaved={toggleSaved} />) : <p className="route-empty">Routes you open will appear here.</p>}
+              {recentRoutes.length ? recentRoutes.map((route) => <RouteCard key={`recent-${route.id}`} route={route} onOpen={openRoute} onToggleSaved={toggleSaved} onRename={renameRoute} />) : <p className="route-empty">Routes you open will appear here.</p>}
             </div>
           </section>
         )}
@@ -201,7 +241,6 @@ export default function Page() {
         </div>
         <div className="prototype-map-controls">
           <button className="filter-pill" onClick={() => setShowFilters((current) => !current)} aria-expanded={showFilters}><Filter aria-hidden="true" /> Filter{activeLayers.length > 0 ? ` · ${activeLayers.length}` : ''}</button>
-          <button className={accessibleOnly ? 'accessibility-button selected' : 'accessibility-button'} onClick={() => setAccessibleOnly((current) => !current)} aria-pressed={accessibleOnly} aria-label="Toggle accessible routes"><Accessibility aria-hidden="true" /></button>
         </div>
         <div className="prototype-zoom-controls" aria-label="Map zoom controls"><button onClick={() => triggerMap('zoom-in')} aria-label="Zoom in">+</button><button onClick={() => triggerMap('zoom-out')} aria-label="Zoom out">−</button><button onClick={() => triggerMap('locate')} aria-label="Find my location"><Crosshair /></button></div>
       </section>
@@ -215,7 +254,7 @@ export default function Page() {
   )
 }
 
-function RouteCard({ route, onOpen, onToggleSaved }: { route: Route; onOpen: (route: Route) => void; onToggleSaved: (route: Route) => void }) {
+function RouteCard({ route, onOpen, onToggleSaved, onRename }: { route: Route; onOpen: (route: Route) => void; onToggleSaved: (route: Route) => void; onRename: (route: Route, name: string) => void }) {
   const filterLabels = filters.filter((filter) => route.layers.includes(filter.id)).map((filter) => filter.label)
   if (route.accessibleOnly) filterLabels.unshift('Accessible only')
   return (
@@ -224,6 +263,7 @@ function RouteCard({ route, onOpen, onToggleSaved }: { route: Route; onOpen: (ro
         <span className="route-card-icon"><Navigation aria-hidden="true" /></span>
         <span className="route-card-copy"><strong>{route.name}</strong><small>{filterLabels.length ? filterLabels.join(' · ') : 'No extra filters'}</small></span>
       </button>
+      {route.saved && <button className="route-rename" onClick={() => { const name = window.prompt('Rename saved route', route.name)?.trim(); if (name) onRename(route, name) }} aria-label={`Rename ${route.name}`}><Pencil aria-hidden="true" /></button>}
       <button className={route.saved ? 'route-favorite is-saved' : 'route-favorite'} onClick={() => onToggleSaved(route)} aria-label={route.saved ? `Remove ${route.name} from saved routes` : `Save ${route.name}`} aria-pressed={route.saved}><Heart aria-hidden="true" fill={route.saved ? 'currentColor' : 'none'} /></button>
     </article>
   )
