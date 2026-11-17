@@ -7,7 +7,7 @@ import { getMapSymbol, symbolBadgeHtml, type MapLayer, type MapSymbol } from '@/
 
 type MapAction = { type: 'zoom-in' | 'zoom-out' | 'locate'; id: number }
 
-export function CampusMap({ activeLayers, action, onLocationError, route, destination }: { activeLayers: MapLayer[]; action?: MapAction; onLocationError?: (message: string | null) => void; route?: { layers: MapLayer[]; accessibleOnly: boolean; start?: { name: string; coordinates: [number, number] }; destination?: { name: string; coordinates: [number, number] } } | null; destination?: { name: string; coordinates: [number, number] } | null }) {
+export function CampusMap({ activeLayers, action, onLocationError, route, destination }: { activeLayers: MapLayer[]; action?: MapAction; onLocationError?: (message: string | null) => void; route?: { layers: MapLayer[]; accessibleOnly: boolean; start?: { name: string; coordinates: [number, number] }; destination?: { name: string; coordinates: [number, number] }; geometry?: [number, number][] } | null; destination?: { name: string; coordinates: [number, number] } | null }) {
   const mapRef = useRef<HTMLDivElement>(null)
   const leafletRef = useRef<L.Map | null>(null)
   const leafletModuleRef = useRef<typeof import('leaflet') | null>(null)
@@ -98,17 +98,15 @@ export function CampusMap({ activeLayers, action, onLocationError, route, destin
     if (!map || !L) return
     routeLayerRef.current?.removeFrom(map)
     routeLayerRef.current = null
-    if (route) {
-      const start = route.start?.coordinates ?? [47.6576, -122.3072] as [number, number]
-      const destination = route.destination?.coordinates ?? [47.6536, -122.3017] as [number, number]
-      const midpoint: [number, number] = [(start[0] + destination[0]) / 2, (start[1] + destination[1]) / 2]
+    if (route?.geometry?.length && route.start && route.destination) {
+      const start = route.start.coordinates
+      const destination = route.destination.coordinates
       routeLayerRef.current = L.layerGroup([
-        L.polyline([start, midpoint], { color: '#2e7d43', weight: 6, opacity: 0.95 }).bindTooltip('Lime navigation', { sticky: true }),
-        L.polyline([midpoint, destination], { color: '#315f8a', weight: 6, opacity: 0.95, dashArray: '9 7' }).bindTooltip('Walking route', { sticky: true }),
-        L.circleMarker(start, { radius: 7, color: '#fff', weight: 3, fillColor: '#2e7d43', fillOpacity: 1 }).bindTooltip(`Start: ${route.start?.name ?? 'Campus'}`),
-        L.circleMarker(destination, { radius: 7, color: '#fff', weight: 3, fillColor: '#315f8a', fillOpacity: 1 }).bindTooltip(`Destination: ${route.destination?.name ?? 'Campus'}`),
+        L.polyline(route.geometry, { color: '#315f8a', weight: 6, opacity: 0.95 }).bindTooltip('Walking route on mapped pedestrian paths', { sticky: true }),
+        L.circleMarker(start, { radius: 7, color: '#fff', weight: 3, fillColor: '#2e7d43', fillOpacity: 1 }).bindTooltip(`Start: ${route.start.name}`),
+        L.circleMarker(destination, { radius: 7, color: '#fff', weight: 3, fillColor: '#315f8a', fillOpacity: 1 }).bindTooltip(`Destination: ${route.destination.name}`),
       ]).addTo(map)
-      if (route.start && route.destination) map.fitBounds(L.latLngBounds(start, destination).pad(0.22), { maxZoom: 17 })
+      map.fitBounds(L.latLngBounds(route.geometry).pad(0.22), { maxZoom: 17 })
     }
     const overlays = overlaysRef.current
     Object.entries(overlays).forEach(([key, layer]) => {
