@@ -66,7 +66,7 @@ export default function Page() {
   const campusBuildings = [...new Map([...buildings, ...(openMapBuildings ?? [])].map((building) => [building.name.toLowerCase(), building])).values()].sort((a, b) => a.name.localeCompare(b.name))
   const [startSuggestionsOpen, setStartSuggestionsOpen] = useState(false)
   const [destinationSuggestionsOpen, setDestinationSuggestionsOpen] = useState(false)
-  const suggestions = searchQuery.trim()
+  const suggestions = searchQuery.trim() && !selectedBuilding
     ? campusBuildings.filter((building) => building.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
     : []
   const matchingBuildings = (value: string) => value.trim()
@@ -139,6 +139,11 @@ export default function Page() {
   }
   const toggleSaved = (route: Route) => setRoutes((current) => current.map((item) => item.id === route.id ? { ...item, saved: !item.saved } : item))
   const renameRoute = (route: Route, name: string) => setRoutes((current) => current.map((item) => item.id === route.id ? { ...item, name } : item))
+  const deleteRoute = (route: Route) => {
+    if (window.confirm(`Delete “${route.name}” from your route library?`)) {
+      setRoutes((current) => current.filter((item) => item.id !== route.id))
+    }
+  }
   const savedRoutes = routes.filter((route) => route.saved)
   const recentRoutes = [...routes].sort((a, b) => b.openedAt - a.openedAt).slice(0, 8)
 
@@ -225,9 +230,9 @@ export default function Page() {
             <div className="sheet-heading"><div><p className="section-label">ROUTE LIBRARY</p><h2>Your routes</h2></div></div>
             <div className="route-list-scroll">
               <h3 className="route-group-title">Saved <span>{savedRoutes.length}</span></h3>
-              {savedRoutes.length ? savedRoutes.map((route) => <RouteCard key={`saved-${route.id}`} route={route} onOpen={openRoute} onToggleSaved={toggleSaved} onRename={renameRoute} />) : <p className="route-empty">Save a route from Home to find it here.</p>}
+              {savedRoutes.length ? savedRoutes.map((route) => <RouteCard key={`saved-${route.id}`} route={route} onOpen={openRoute} onToggleSaved={toggleSaved} onRename={renameRoute} onDelete={deleteRoute} />) : <p className="route-empty">Save a route from Home to find it here.</p>}
               <h3 className="route-group-title recent-title">Recent <span>{recentRoutes.length}</span></h3>
-              {recentRoutes.length ? recentRoutes.map((route) => <RouteCard key={`recent-${route.id}`} route={route} onOpen={openRoute} onToggleSaved={toggleSaved} onRename={renameRoute} />) : <p className="route-empty">Routes you open will appear here.</p>}
+              {recentRoutes.length ? recentRoutes.map((route) => <RouteCard key={`recent-${route.id}`} route={route} onOpen={openRoute} onToggleSaved={toggleSaved} onRename={renameRoute} onDelete={deleteRoute} />) : <p className="route-empty">Routes you open will appear here.</p>}
             </div>
           </section>
         )}
@@ -254,7 +259,7 @@ export default function Page() {
   )
 }
 
-function RouteCard({ route, onOpen, onToggleSaved, onRename }: { route: Route; onOpen: (route: Route) => void; onToggleSaved: (route: Route) => void; onRename: (route: Route, name: string) => void }) {
+function RouteCard({ route, onOpen, onToggleSaved, onRename, onDelete }: { route: Route; onOpen: (route: Route) => void; onToggleSaved: (route: Route) => void; onRename: (route: Route, name: string) => void; onDelete: (route: Route) => void }) {
   const filterLabels = filters.filter((filter) => route.layers.includes(filter.id)).map((filter) => filter.label)
   if (route.accessibleOnly) filterLabels.unshift('Accessible only')
   return (
@@ -264,6 +269,7 @@ function RouteCard({ route, onOpen, onToggleSaved, onRename }: { route: Route; o
         <span className="route-card-copy"><strong>{route.name}</strong><small>{filterLabels.length ? filterLabels.join(' · ') : 'No extra filters'}</small></span>
       </button>
       {route.saved && <button className="route-rename" onClick={() => { const name = window.prompt('Rename saved route', route.name)?.trim(); if (name) onRename(route, name) }} aria-label={`Rename ${route.name}`}><Pencil aria-hidden="true" /></button>}
+      <button className="route-delete" onClick={() => onDelete(route)} aria-label={`Delete ${route.name} from route library`}><X aria-hidden="true" /></button>
       <button className={route.saved ? 'route-favorite is-saved' : 'route-favorite'} onClick={() => onToggleSaved(route)} aria-label={route.saved ? `Remove ${route.name} from saved routes` : `Save ${route.name}`} aria-pressed={route.saved}><Heart aria-hidden="true" fill={route.saved ? 'currentColor' : 'none'} /></button>
     </article>
   )

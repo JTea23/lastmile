@@ -102,7 +102,7 @@ export function CampusMap({ activeLayers, action, onLocationError, route, destin
       const start = route.start.coordinates
       const destination = route.destination.coordinates
       routeLayerRef.current = L.layerGroup([
-        L.polyline(route.geometry, { color: '#315f8a', weight: 6, opacity: 0.95 }).bindTooltip('Walking route on mapped pedestrian paths', { sticky: true }),
+        L.polyline(route.geometry, { color: '#315f8a', weight: 6, opacity: 0.95, dashArray: '10 8', lineCap: 'round' }).bindTooltip('Walking route on mapped pedestrian paths', { sticky: true }),
         L.circleMarker(start, { radius: 7, color: '#fff', weight: 3, fillColor: '#2e7d43', fillOpacity: 1 }).bindTooltip(`Start: ${route.start.name}`),
         L.circleMarker(destination, { radius: 7, color: '#fff', weight: 3, fillColor: '#315f8a', fillOpacity: 1 }).bindTooltip(`Destination: ${route.destination.name}`),
       ]).addTo(map)
