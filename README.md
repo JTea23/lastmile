@@ -10,7 +10,15 @@ This repository is linked to a [v0](https://v0.app) project. You can continue de
 
 ## Getting Started
 
-First, run the development server:
+### Configure environment variables
+- Create a file named .env.local in the root directory of the project (at the same level as package.json).
+- Add the following variables:
+`NEXT_PUBLIC_SUPABASE_URL=https://veqyuswvjgyuptpwvtva.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<shared-publishable-key>`
+- Get the publishable key from a team member or from the Supabase project dashboard under Project Settings → API Keys.
+- Do not commit .env.local to GitHub. It's already included in .gitignore.
+
+### Run the development server:
 
 ```bash
 npm run dev
@@ -23,6 +31,11 @@ pnpm dev
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+
+### Troubleshooting
+- If Supabase requests fail, double-check that your .env.local values are correct.
+- If you change .env.local, restart the development server.
+- Make sure you're using the shared Supabase project credentials rather than creating a new Supabase project.
 
 ## Learn More
 
