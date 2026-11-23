@@ -5,6 +5,7 @@ import useSWR from 'swr'
 import { Crosshair, Filter, Heart, Menu, Navigation, Search, Map as MapIcon, Home as HomeIcon, X, Pencil } from 'lucide-react'
 import { CampusMap } from '@/components/campus-map'
 import { MapLegend } from '@/components/map-legend'
+import { getMapFeatures, type MapFeature } from '@/lib/supabase/map-features'
 
 type Layer = 'no-go' | 'lime-parking' | 'terrain' | 'parking'
 type MapAction = { type: 'zoom-in' | 'zoom-out' | 'locate'; id: number }
@@ -38,6 +39,7 @@ function routeName(layers: Layer[], accessibleOnly: boolean) {
 }
 
 export default function Page() {
+  const [mapFeatures, setMapFeatures] = useState<MapFeature[]>([])
   const [activeTab, setActiveTab] = useState('Home')
   const [activeLayers, setActiveLayers] = useState<Layer[]>([])
   const [showFilters, setShowFilters] = useState(false)
@@ -73,6 +75,18 @@ export default function Page() {
     ? campusBuildings.filter((building) => building.name.toLowerCase().includes(value.trim().toLowerCase()))
     : []
 
+  useEffect(() => {
+    async function loadFeatures() {
+      try {
+        const features = await getMapFeatures()
+        setMapFeatures(features)
+      } catch (error) {
+        console.error('Could not load features:', error)
+      }
+    }
+
+    loadFeatures()
+  }, [])
 
   useEffect(() => {
     try {
@@ -239,7 +253,14 @@ export default function Page() {
       </aside>
 
       <section className="prototype-map-section" aria-label="UW Seattle campus map">
-        <CampusMap activeLayers={activeLayers} action={mapAction} onLocationError={setLocationError} route={activeRoute} destination={selectedBuilding} />
+        <CampusMap
+          activeLayers={activeLayers}
+          action={mapAction}
+          onLocationError={setLocationError}
+          route={activeRoute}
+          destination={selectedBuilding}
+          mapFeatures={mapFeatures}
+        />
         <div className="map-bottom-stack">
           <MapLegend activeLayers={activeLayers} route={activeRoute} />
           {locationError && <p className="location-status" role="status">{locationError}</p>}
