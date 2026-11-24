@@ -1,20 +1,20 @@
 
 'use client'
 
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
-// Get the Supabase credentials from .env.local
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabasePublishableKey =
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+let supabase: SupabaseClient | null = null
 
-// Make sure both environment variables exist
-if (!supabaseUrl || !supabasePublishableKey) {
-  throw new Error('Missing Supabase environment variables.')
+export function getSupabaseClient(): SupabaseClient | null {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabasePublishableKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+  if (!supabaseUrl || !supabasePublishableKey) {
+    return null
+  }
+
+  supabase ??= createClient(supabaseUrl, supabasePublishableKey)
+  return supabase
 }
-
-// Create and export the Supabase client
-export const supabase = createClient(
-  supabaseUrl,
-  supabasePublishableKey
-)
