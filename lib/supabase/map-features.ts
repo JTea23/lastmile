@@ -1,4 +1,4 @@
-import { supabase } from './client'
+import { getSupabaseClient } from './client'
 
 export type GeoJSONPoint = {
   type: 'Point'
@@ -33,6 +33,12 @@ export type MapFeature = {
 }
 
 export async function getMapFeatures(): Promise<MapFeature[]> {
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    console.warn('Map features are unavailable because Supabase is not configured.')
+    return []
+  }
+
   const { data, error } = await supabase
     .from('map_features_geojson')
     .select('*')
